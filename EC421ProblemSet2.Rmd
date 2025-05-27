@@ -1,0 +1,250 @@
+---
+title: "EC421ProblemSet2"
+author: "Samuel Marsh"
+date: "2025-05-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Loading packages & data.
+```{r}
+pacman::p_load(tidyverse, here, lmtest, ggplot2, dplyr, tibble, tidyr)
+
+data_life = read.csv('/Users/sammarsh/Desktop/R DATASETS/EC 421 R/data-life.csv')
+```
+
+2. Taking a peek at the data to see what we are working with. 
+```{r}
+glimpse(data_life)
+
+max(data_life$year)
+sum(is.na(data_life))
+```
+- It looks like the data covers from 1952 through 2023.
+- It appears to be ordered by year with 8 columns and 72 rows
+- There are 0 missing values in any rows. 
+
+3. Now creating 5 time series plots.
+- (a) population (pop)
+```{r}
+ggplot(data_life, aes(x = year, y = pop)) +
+  geom_line(color = 'blue') +
+  labs(title = "Time Series of Population from 1952 to 2023",
+       x = "Time",
+       y = "Population") +
+  theme_minimal()
+
+
+```
+
+- (b) GDP (gdp)
+```{r}
+ggplot(data_life, aes(x = year, y = gdp)) +
+  geom_line(color = 'blue') +
+  labs(title = "Time Series of GDP from 1952 to 2023",
+       x = "Time",
+       y = "GDP") +
+  theme_minimal()
+
+```
+
+- (c) CPI (cpi)
+```{r}
+ggplot(data_life, aes(x = year, y = cpi)) +
+  geom_line(color = 'blue') +
+  labs(title = "Time Series of CPI from 1952 to 2023",
+       x = "Time",
+       y = "CPI") +
+  theme_minimal()
+
+```
+
+- (d) inflation rate (inf)
+```{r}
+ggplot(data_life, aes(x = year, y = inf)) +
+  geom_line(color = 'blue') +
+  labs(title = "Time Series of inflation from 1952 to 2023",
+       x = "Time",
+       y = "Inflation") +
+  theme_minimal()
+```
+
+- (e) female, male, and population life expectancy (exp_female, exp_male, and exp_pop) all on the same plot.
+```{r}
+ggplot(data_life, aes(x = year)) +
+  geom_line(aes(y = exp_female, color = 'exp_female'), size = 1) +
+  geom_line(aes(y = exp_male, color = 'exp_male'), size = 1) +
+  geom_line(aes(y = exp_pop, color = 'exp_pop'), size = 1) +
+  labs(title = "Time Series of Life expectancy from different groups from 1952 to 2023",
+       x = "Time",
+       y = "Variables",
+       color = "variables") +
+  theme_minimal()
+```
+
+4. Autocorrelation occurs when variables are subject to similar "shocks" which makes them correlated over time. This is not exclusive to being between variables, and can happen with variables being correlated with their own past values. The final graph, with exp_female, exp_male, and exp_pop, appears to suggest that there is some autocorrelation due to its smooth upward trend, minus 2020 which has a dip, likely as a result of covid. This trend is similar to population, gdp, and cpi charts, which indicates potential autocorrelation as well. 
+
+5. Missing from this dataset is gdp per capital, which we will call gdppc and create by mutating the data to add a variable. I'll then add a time series plot similar to the others. 
+```{r}
+data_life = data_life %>%
+  mutate(gdppc = (gdp/pop)*100)
+
+tibble(data_life)
+
+ggplot(data_life, aes(x = year, y = gdppc)) +
+  geom_line(color = 'blue') +
+  labs(title = "Time Series of GDP Per Capita from 1952 to 2023",
+       x = "Time",
+       y = "GDP Per Capita in (Thousands)") +
+  theme_minimal()
+```
+
+6. The trend is very similar, with an identical dip around 2020. I would say that the concerns for autocorrelation were not fully addressed. It looks like there is still some issues although the curve has smoothed out quite a bit.
+
+7. Starting by estimating a static model, life expectancy regressed on gdp per capita and inflation rate
+```{r}
+q7staticmodel = lm(exp_pop ~ gdppc + inf, data = data_life)
+summary(q7staticmodel)
+```
+
+8. Interpreting the results, it looks like both gdppc and inflation have positive effects on life expectancy of the population, with another thousand in gdp resulting in a .138 year increase in lifespan and with inflation resulting in a .103 years increase on lifespan. The P values support gdppc, but not inf as having significant effects.
+
+9. gdppc and inflation make sense as variables, except the inflation rate is just a function of cpi, and using real gdp would eliminate that variable. Using gdppc was good, but leaves out the real gdp, so while the variables make sense, they may not account for the simply increasing inflation rates. It might also be good to add population into the rate, which indicates how gdppc might be increasing/decreasing compared to gdp. These two are likely connected.
+
+10. Adding population into the regression.
+```{r}
+q10staticmodel = lm(exp_pop ~ gdppc + inf + pop, data = data_life)
+summary(q10staticmodel)
+```
+
+11. Including population drastically changed the results from question 7's regression. It looks now like high gdppc and inflation have a negative impact on life expectancy, with population having a positive effect, of .094 years per million added. I think we have exposed an endogeniety, or omitted variable bias, which indicates that the population size has the largest effect on life expectancy, however high inflation and gdppc have higher negative effects.
+
+12. Estimating a model that interacts with time by adding a lagged variable for gdppc and inflation.
+```{r}
+q12staticmodel = lm(exp_pop ~ gdppc + inf + lag(gdppc, 1) + lag(inf,1), data = data_life)
+summary(q12staticmodel)
+```
+
+13. Estimating the total effect of gdppc on life expectancy is basically the summed effect of the lagged and static variables.
+```{r}
+total_effect13 = -0.35172 + 0.50978
+print(total_effect13)
+```
+
+the total effect is .15806 years added per thousand added of gdp per capita.
+
+14. The assumptions for OLS to be unbiased in 8 and 10 are less than that of 12. In 8 and 10, we need to assume that there is linearity, no presence of endogeniety, homeoskedasticity, or multicolinarity. In 12, we also need to have no autocorrelation, which in time series regressions shows up when the variables are correlated across time. This causes massive issues in dynamic models, such as 12.
+
+15. We can expect some autocorrelation among our variables like exp_pop, gdp, and gdppc, where the two are connected through both being related to the health situating in any given year. The omission of real gdp may also cause some endogeniety problems, because inflation may lead to increasing values for everything regardless.
+
+16. In regression 12 in particular there are some serious autocorrelation issues, especially between the errors for variables. This leads to inefficient OLS and unreliable standard errors.
+
+17. We will use model (12)'s residuals to test for first order autocorrelation. I'll outline the steps then follow them.
+- 1. Estimating the model
+- 2. Record the residuals from our OLS regression
+- 3. Regress residuals on an intercept, the explanatory variables, and lagged residuals.
+- 4. F (or LM) test for ρ1=ρ2=0
+
+```{r}
+# 1. Estimate Model
+autocorr_test_reg = lm(exp_pop ~ gdppc + inf + lag(gdppc, 1) + lag(inf, 1), data = data_life)
+# 2. Record residuals
+data_life$e = c(NA, residuals(autocorr_test_reg))
+# 3. Regress residuals on an intercept, ev, and lagged results.
+q17reg_p3 <- lm(
+  e ~ lag(gdppc, 1) + lag(inf, 1) + lag(e, 1),
+  data = data_life
+)
+# 4. F test
+waldtest(q17reg_p3, c("lag(e)", "lag(e, 1)"))
+
+```
+
+18. Living with autocorrelation is complex. There are several answers, including, (1) Misspecification (2), Serial Robust Standard Errors (Newey-West), (3)FLGS.
+- (a) Misspecification is similar to heterosekedasticity. Essentially, the model is specified for variables that are not correct, so the errors are not consistent, making them correlated through time. 
+- (b) Newey West standard errors are errors that are robust to specifically serial standard errors being correlated. We did not derive these in class and won't be (beyond this class's scope)
+- (c) feasible generalized least squares (FGLS) gives us efficient and consistent standard errors in the presence of autocorrelation. We do this in a couple steps: __(1)__ Estimate the original (untransformed) model; save residuals, __(2)__ Estimate ρ: Regress residuals on their lags (no intercept), __(3)__ Estimate the transformed model, plugging in ^ρ for ρ.
+
+19. Adding a lagged variable for the outcome variable in model (12).
+```{r}
+q19LaggedOutReg = lm(exp_pop ~ gdppc + inf + lag(gdppc) + lag(inf) + lag(exp_pop), data = data_life)
+summary(q19LaggedOutReg)
+```
+
+20. Testing (19) for autocorrelation. This follows the same process as q (18), so I will not list out the steps again.
+```{r}
+autocorr_test_reg_20 = lm(exp_pop ~ gdppc + inf + lag(gdppc, 1) + lag(inf, 1) + lag(exp_pop, 1), data = data_life)
+data_life$e = c(NA, residuals(autocorr_test_reg_20))
+q17reg_p3 <- lm(
+  e ~ lag(gdppc, 1) + lag(inf, 1) + lag(exp_pop,1 ) + lag(e, 1),
+  data = data_life
+)
+
+waldtest(q17reg_p3, c("lag(e)", "lag(e, 1)"))
+```
+
+The p value is well over .05, so we can reject the null hypothesis that there is no first order autocorrelation. 
+
+21. OLS being autocorrelated, as a result of a lagged outcome variable, results in OLS being biased for the coefficients as well as no longer the most efficient estimated. Because OLS is biased for $\beta$, we have to say it is also biased for the disturbances $\upsilon_t$.
+
+22. I think it does make sense to include a lagged variable because the likelihood of continued progressive health policy over years is high, suggesting that past policy would affect the future of life expectancy.
+
+23. CPI, and inflation as a result, seems to suggest that the variables are non stationary. I can see this because of the persistent upward trend. GDP and population, as well as life expectancy all violate this trend as well. 
+
+24. Non-stationarity in our data causes a lot of problems. We may get spurious results. We also cannot trust OLS. In order to combat this there are a number of tests to find out what the solutions may be, including calculating the disturbance from the year prior to pull ourselves back to "good behavior". 
+
+25. CPI variable may not be stationary, but Inflation as a variable may have some hope of being stationary. This is because the inflation formula includes a built in 'lagged' variable, 
+
+26. We need to mutate the variables to create "differenced" versions of exp_pop, gdppc, and inf. We will do this by taking the differences of each with this formula: $\delta x_t = x_t - x_{t-1}$. I will name these with the phrase "diff" ahead of them.
+```{r}
+data_life = data_life %>%
+  mutate(
+    diff_exp_pop = exp_pop - lag(exp_pop, 1),
+    diff_gdppc = gdppc - lag(gdppc, 1),
+    diff_inf = inf - lag(inf,1)
+  )
+
+ggplot(data_life, aes(x = year, y = diff_exp_pop)) +
+  geom_line(color = 'blue') + 
+  labs(title = "Differenced Population Life Expectancy",
+       x = "Year",
+       y = "Change in GDP per Capita") + 
+  theme_minimal()
+
+ggplot(data_life, aes(x = year, y = diff_gdppc)) + 
+  geom_line(color = 'blue') + 
+  labs(title = "Differenced GDP Per Capita",
+       x = "Year",
+       y = "Change in GDP per Capita") +
+  theme_minimal()
+
+ggplot(data_life, aes(x = year, y = diff_inf)) +
+  geom_line(color = 'blue') +
+  labs(title = "Differenced Inflation",
+       x = "Year",
+       y = "Change in Inflation Rate" ) +
+  theme_minimal()
+
+
+
+```
+
+Examining these time series charts I think that using a differenced variable did help with the stationarity problem. The data looks like it is much more centered around 0, with the exception of GDP Per capita, which still indicates a slight an upward trend.
+
+27. We will now estimate the model from question 7 again with the differenced form of the variables.
+```{r}
+q27diff_model = lm(diff_exp_pop ~ diff_gdppc + diff_inf, data = data_life)
+summary(q27diff_model)
+```
+
+28. Interpreting these results yields again different results. It looks like the only significant result is the diff_gdppc, where a 1000 dollar increase in gdppc results in a .06935 year increase in expected lifespan. Inf is unfortunately not a high enough  enough to suggest a significant effect. 
+
+29. Accounting for differenced variables increased our p value from 'pretty much' zero up to around .039, which is significant at the 5% level, still. It looks like the overall the differentiated model (27) is addressing autocorrelation, while regression in (7) is likely spurious, or unfounded. 
+
+30. The 'best' model we estimated is going to be the one with stationarity accounted for, the lm from question 27. This is because it gets rid of a problem that is present in all our other models.
+
+
+
